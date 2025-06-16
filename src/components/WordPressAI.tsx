@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -7,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { AlertCircle, Code, Loader2, Send } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { isWordPressQuestion, getWordPressPrompt } from '@/utils/isWordPressQuestion';
+import { getGeminiModel } from '@/lib/gemini';
 
 export default function WordPressAI() {
   const [input, setInput] = useState('');
@@ -28,21 +28,17 @@ export default function WordPressAI() {
     setAnswer('');
 
     try {
-      const response = await fetch('/api/ask-wordpress', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: input }),
-      });
+      const model = getGeminiModel();
+      const wordpressPrompt = getWordPressPrompt(input);
+      
+      const result = await model.generateContent(wordpressPrompt);
+      const response = await result.response;
+      const answerText = response.text();
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to get response');
-      }
-
-      setAnswer(data.answer);
+      setAnswer(answerText);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error('Gemini API Error:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred while generating the response');
     } finally {
       setLoading(false);
     }
