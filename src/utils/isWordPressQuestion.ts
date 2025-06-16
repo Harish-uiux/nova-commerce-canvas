@@ -44,3 +44,43 @@ Question: ${userInput}
 
 Please provide a comprehensive answer that would help a WordPress developer.`;
 };
+
+export const getThemeGenerationPrompt = (userInput: string): string => {
+  return `You are a professional WordPress theme developer. Generate a complete WordPress theme based on this request: "${userInput}"
+
+Create a modern WordPress theme with the following requirements:
+- Proper file and folder structure following WordPress standards
+- Include style.css with valid theme header comment
+- functions.php should enqueue styles/scripts, register menus, support featured images, and follow modern WordPress practices
+- index.php should include basic loop and template structure with proper HTML5 semantics
+- Include header.php, footer.php with standard HTML5 layout and WordPress hooks
+- Include page.php, single.php for better template hierarchy
+- Use modern WordPress features like wp_head(), wp_footer(), body_class(), etc.
+- Include proper CSS with responsive design
+- Follow WordPress coding standards and security best practices
+
+Format your response EXACTLY like this with file emoji:
+
+📄 style.css
+[complete CSS code with theme header]
+
+📄 functions.php
+[complete PHP code with all functions]
+
+📄 index.php
+[complete PHP template code]
+
+📄 header.php
+[complete PHP header template]
+
+📄 footer.php
+[complete PHP footer template]
+
+📄 page.php
+[complete PHP page template]
+
+📄 single.php
+[complete PHP single post template]
+
+Make sure each file contains complete, production-ready code that follows WordPress best practices. The theme should be modern, responsive, and include proper WordPress hooks and filters.`;
+};

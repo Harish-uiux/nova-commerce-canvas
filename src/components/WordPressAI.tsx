@@ -1,39 +1,59 @@
+
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, Code, Loader2, Send } from 'lucide-react';
+import { AlertCircle, Code, Loader2, Send, Download } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { isWordPressQuestion, getWordPressPrompt } from '@/utils/isWordPressQuestion';
+import { isWordPressQuestion, getWordPressPrompt, getThemeGenerationPrompt } from '@/utils/isWordPressQuestion';
 import { getGeminiModel } from '@/lib/gemini';
+import { generateThemeZip } from '@/utils/themeGenerator';
 
 export default function WordPressAI() {
   const [input, setInput] = useState('');
   const [answer, setAnswer] = useState('');
+  const [themeFiles, setThemeFiles] = useState<Record<string, string> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isThemeGeneration, setIsThemeGeneration] = useState(false);
+
+  const isThemeRequest = (input: string): boolean => {
+    const themeKeywords = ['create theme', 'generate theme', 'build theme', 'make theme', 'theme for'];
+    return themeKeywords.some(keyword => input.toLowerCase().includes(keyword));
+  };
 
   const handleAsk = async () => {
     if (!input.trim()) return;
 
-    if (!isWordPressQuestion(input)) {
+    const isTheme = isThemeRequest(input);
+    
+    if (!isTheme && !isWordPressQuestion(input)) {
       setError('This AI tool only answers WordPress-related questions. Please ask about WordPress themes, plugins, development, or functionality.');
       setAnswer('');
+      setThemeFiles(null);
       return;
     }
 
     setLoading(true);
     setError('');
     setAnswer('');
+    setThemeFiles(null);
+    setIsThemeGeneration(isTheme);
 
     try {
       const model = getGeminiModel();
-      const wordpressPrompt = getWordPressPrompt(input);
+      const prompt = isTheme ? getThemeGenerationPrompt(input) : getWordPressPrompt(input);
       
-      const result = await model.generateContent(wordpressPrompt);
+      const result = await model.generateContent(prompt);
       const response = await result.response;
       const answerText = response.text();
+
+      if (isTheme) {
+        // Parse theme files from the response
+        const files = parseThemeFiles(answerText);
+        setThemeFiles(files);
+      }
 
       setAnswer(answerText);
     } catch (err) {
@@ -41,6 +61,45 @@ export default function WordPressAI() {
       setError(err instanceof Error ? err.message : 'An error occurred while generating the response');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const parseThemeFiles = (response: string): Record<string, string> => {
+    const files: Record<string, string> = {};
+    const filePattern = /📄\s*([^\n]+)\n([\s\S]*?)(?=📄|$)/g;
+    let match;
+
+    while ((match = filePattern.exec(response)) !== null) {
+      const fileName = match[1].trim();
+      let content = match[2].trim();
+      
+      // Remove code block markers if present
+      content = content.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '');
+      
+      if (fileName && content) {
+        files[fileName] = content;
+      }
+    }
+
+    return files;
+  };
+
+  const handleDownloadTheme = async () => {
+    if (!themeFiles) return;
+    
+    try {
+      const zipBlob = await generateThemeZip(themeFiles);
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'wordpress-theme.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error generating zip:', err);
+      setError('Failed to generate theme zip file');
     }
   };
 
@@ -58,20 +117,20 @@ export default function WordPressAI() {
           WordPress AI Assistant
         </h1>
         <p className="text-muted-foreground">
-          Get expert WordPress development help powered by AI
+          Get expert WordPress development help & generate complete themes powered by AI
         </p>
         <Badge variant="secondary" className="text-xs">
-          Supports themes, plugins, hooks, WooCommerce, Elementor & more
+          Supports themes, plugins, hooks, WooCommerce, Elementor & theme generation
         </Badge>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Ask Your WordPress Question</CardTitle>
+          <CardTitle className="text-lg">Ask Your WordPress Question or Generate a Theme</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <Textarea
-            placeholder="Example: How do I create a custom WordPress hook? or How to add a custom field to WooCommerce products?"
+            placeholder="Example: Create a WordPress theme for a photography portfolio with dark mode support, or How do I create a custom WordPress hook?"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyPress}
@@ -81,18 +140,18 @@ export default function WordPressAI() {
           
           <div className="flex justify-between items-center">
             <p className="text-sm text-muted-foreground">
-              Press Ctrl+Enter to submit
+              Press Ctrl+Enter to submit • Try: "Create a theme for a restaurant website"
             </p>
             <Button onClick={handleAsk} disabled={loading || !input.trim()}>
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Thinking...
+                  {isThemeGeneration ? 'Generating Theme...' : 'Thinking...'}
                 </>
               ) : (
                 <>
                   <Send className="h-4 w-4 mr-2" />
-                  Ask
+                  {isThemeRequest(input) ? 'Generate Theme' : 'Ask'}
                 </>
               )}
             </Button>
@@ -109,15 +168,45 @@ export default function WordPressAI() {
 
       {answer && (
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">AI Response</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-lg">
+              {isThemeGeneration ? '🎨 Generated WordPress Theme' : '🧠 AI Response'}
+            </CardTitle>
+            {themeFiles && Object.keys(themeFiles).length > 0 && (
+              <Button onClick={handleDownloadTheme} variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-2" />
+                Download ZIP
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
-            <div className="prose prose-sm max-w-none">
-              <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg text-sm overflow-x-auto">
-                {answer}
-              </pre>
-            </div>
+            {isThemeGeneration && themeFiles && Object.keys(themeFiles).length > 0 ? (
+              <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="text-green-800 font-medium">
+                    ✅ Theme generated successfully! Found {Object.keys(themeFiles).length} files.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  {Object.entries(themeFiles).map(([fileName, content]) => (
+                    <div key={fileName} className="border rounded-lg">
+                      <div className="bg-muted px-4 py-2 border-b">
+                        <span className="font-mono text-sm font-medium">📄 {fileName}</span>
+                      </div>
+                      <pre className="p-4 text-sm overflow-x-auto bg-background">
+                        <code>{content}</code>
+                      </pre>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="prose prose-sm max-w-none">
+                <pre className="whitespace-pre-wrap bg-muted p-4 rounded-lg text-sm overflow-x-auto">
+                  {answer}
+                </pre>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -126,7 +215,7 @@ export default function WordPressAI() {
         <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div>
-              <h3 className="font-semibold mb-2">What I can help with:</h3>
+              <h3 className="font-semibold mb-2">WordPress Development:</h3>
               <ul className="space-y-1 text-muted-foreground">
                 <li>• WordPress theme development</li>
                 <li>• Plugin creation and customization</li>
@@ -135,12 +224,12 @@ export default function WordPressAI() {
               </ul>
             </div>
             <div>
-              <h3 className="font-semibold mb-2">Advanced topics:</h3>
+              <h3 className="font-semibold mb-2">Theme Generation:</h3>
               <ul className="space-y-1 text-muted-foreground">
-                <li>• Elementor widget development</li>
-                <li>• Custom post types and fields</li>
-                <li>• WordPress REST API</li>
-                <li>• Performance optimization</li>
+                <li>• Complete theme structure</li>
+                <li>• Modern WordPress standards</li>
+                <li>• Downloadable ZIP files</li>
+                <li>• Custom post types & fields</li>
               </ul>
             </div>
           </div>
